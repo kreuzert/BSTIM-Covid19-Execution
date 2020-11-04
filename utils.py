@@ -1,3 +1,4 @@
+import argparse
 import datetime
 import json
 import logging.config
@@ -68,6 +69,15 @@ def setup_logger(mail_receiver, logging_conf, logfile):
     log.addHandler(mail_handler)
     return log
 
+def str2bool(v):
+    if isinstance(v, bool):
+       return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
 def parse_arguments(args):
     if args.date is not None:
@@ -131,7 +141,32 @@ def parse_arguments(args):
     else:
         export_offset = "25"
 
-    return job_date, mail_receiver, base_dir, download_url, git_dir, job_dir, logging_conf, slurm_account, slurm_log_dir, slurm_mail, export_dir, export_offset
+    if args.usetaskid is not None:
+        use_task_id = args.usetaskid
+    else:
+        use_task_id = False
+
+    if args.cores is not None:
+        cores = args.cores[0]
+    else:
+        cores = 128
+
+    if args.sampletasks is not None:
+        sample_tasks = args.sampletasks[0]
+    else:
+        sample_tasks = 100
+
+    if args.samplenodes is not None:
+        sample_nodes = args.samplenodes[0]
+    else:
+        sample_nodes = 2
+
+    if args.sampleoverloadfactor is not None:
+        sample_overload_factor = args.sampleoverloadfactor[0]
+    else:
+        sample_overload_factor = 4
+
+    return job_date, mail_receiver, base_dir, download_url, git_dir, job_dir, logging_conf, slurm_account, slurm_log_dir, slurm_mail, export_dir, export_offset, use_task_id, cores, sample_tasks, sample_nodes, sample_overload_factor
 
 
 def download_csv(log, download_url, raw_csv_fpath):
@@ -195,27 +230,46 @@ def preprocess_table(log, raw_csv_fpath, data_csv_fpath, git_dir_data, job_dir):
     df.to_csv(data_csv_fpath, sep=",")
 
 
-def create_slurm(log, slurm_file, slurm_sh_file, sample_id, account, slurm_log_dir, slurm_mail):
+def create_sample_slurm(log, slurm_file, slurm_sh_file, sample_id, account, slurm_log_dir, slurm_mail, use_task_id=False, tasks_per_node=50, nodes=2):
     s = ""
     s += "#!/bin/bash -x\n"
-    s += "#SBATCH --job-name=COVID_{}\n".format(sample_id)
+    s += "#SBATCH --job-name={}_SM_COVID\n".format(sample_id)
     s += "#SBATCH --account={}\n".format(account)
     s += "#SBATCH --partition=batch\n"
-    #if use_task_id:
-    #    task_per_node = 100/nodes
-    #    # 50
-    #    # 128 cores   ; 128.0 / 50 -> 2,56  -> *4 (overload_factor) -> int(10,24)
-    #    if task_per_node % nodes != 0:
-    #        raise Exception("Use nodes that have 100 % nodes == 0")
-    #    s += "#SBATCH --array=1-100:{task_per_node}\n".format(task_per_node=task_per_node)
-    #    s += "#SBATCH --ntasks-per-node={task_per_node}\n".format(task_per_node=task_per_node)
-    #    s += "#SBATCH --nodes={nodes}\n".format(nodes=nodes)
-    #else:
+    if use_task_id:
+        s += "#SBATCH --array=1-100:{tasks_per_node}\n".format(tasks_per_node=int(tasks_per_node))
+        s += "#SBATCH --ntasks-per-node={tasks_per_node}\n".format(tasks_per_node=int(tasks_per_node))
+        s += "#SBATCH --nodes={nodes}\n".format(nodes=int(nodes))
+    else:
+        s += "#SBATCH --array=1\n"
+        s += "#SBATCH --ntasks-per-node=1\n"
+        s += "#SBATCH --nodes=1\n"
+    s += "#SBATCH --output={}/%A_o.txt\n".format(slurm_log_dir)
+    s += "#SBATCH --error={}/%A_e.txt\n".format(slurm_log_dir)
+    s += "#SBATCH --time=3:00:00\n"
+    s += "# #SBATCH --mail-type=FAIL\n"
+    s += "# #SBATCH --mail-user={}\n".format(slurm_mail)
+    s += "# select project\n"
+    s += "jutil env activate -p {}\n".format(account)
+    s += "# ensure SLURM output/errors directory exists\n"
+    s += "# run tasks\n"
+    s += "srun --exclusive -n ${{SLURM_NTASKS}} {}\n".format(slurm_sh_file)
+    log.trace("Create {} Input:\n{}".format(slurm_file, s))
+    with open(slurm_file, 'w') as f:
+        f.write(s)
+
+def create_results_slurm(log, slurm_file, slurm_sh_file, sample_id, account, slurm_log_dir, slurm_mail, sample_slurm_job_id):
+    s = ""
+    s += "#!/bin/bash -x\n"
+    s += "#SBATCH --job-name={}_R_COVID\n".format(sample_id)
+    s += "#SBATCH --account={}\n".format(account)
+    s += "#SBATCH --partition=batch\n"
     s += "#SBATCH --array=1\n"
     s += "#SBATCH --ntasks-per-node=1\n"
     s += "#SBATCH --nodes=1\n"
     s += "#SBATCH --output={}/%A_o.txt\n".format(slurm_log_dir)
     s += "#SBATCH --error={}/%A_e.txt\n".format(slurm_log_dir)
+    s += "#SBATCH --dependency=afterok:{}\n".format(sample_slurm_job_id)
     s += "#SBATCH --time=3:00:00\n"
     s += "# #SBATCH --mail-type=FAIL\n"
     s += "# #SBATCH --mail-user={}\n".format(slurm_mail)
@@ -235,7 +289,27 @@ def make_executable(path):
     os.chmod(path, mode)
 
 
-def create_slurm_sh(log, slurm_sh_file, csv_input_file, git_dir_src, output_root_dir, sample_id, export_dir, export_offset):
+def create_results_slurm_sh(log, slurm_sh_file, csv_input_file, git_dir_src, output_root_dir, sample_id, export_dir, export_offset):
+    s = ""
+    s += "#!/bin/bash\n"
+    s += "TASK_ID=$((${SLURM_ARRAY_TASK_ID}+${SLURM_LOCALID}))\n" # 1+[0..49] | 51+[0..49]
+    s += "TASK_DIR=${SCRATCH}/run_${SLURM_ARRAY_JOB_ID}/task_${TASK_ID}\n"
+    s += "mkdir -p ${TASK_DIR}\n"
+    s += "echo \"TASK ${TASK_ID}: Running in job-array ${SLURM_ARRAY_JOB_ID} on \
+          `hostname` and dump output to ${TASK_DIR}\"\n"
+    s += "source ${PROJECT}/.local/share/venvs/covid19dynstat_jusuf/bin/activate\n"
+    results_to_csv_py = "results_to_csv.py"
+    s += "cd {}\n".format(git_dir_src)
+    if export_dir:
+        s += "#THEANO_FLAGS=\"base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn\" python3 {results_to_csv_py} {sample_id} --csvinputfile {csv_input_file} --outputrootdir {output_root_dir} --exportdir {export_dir} --exportoffset {export_offset} &>> ${{TASK_DIR}}/log.txt\n".format(results_to_csv_py=results_to_csv_py, sample_id=sample_id, csv_input_file=csv_input_file, output_root_dir=output_root_dir, export_dir=export_dir, export_offset=export_offset) 
+    else:
+        s += "#THEANO_FLAGS=\"base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn\" python3 {results_to_csv_py} {sample_id} --csvinputfile {csv_input_file} --outputrootdir {output_root_dir} &>> ${{TASK_DIR}}/log.txt\n".format(results_to_csv_py=results_to_csv_py, sample_id=sample_id, csv_input_file=csv_input_file, output_root_dir=output_root_dir) 
+    log.trace("Create {} Input:\n{}".format(slurm_sh_file, s))
+    with open(slurm_sh_file, 'w') as f:
+        f.write(s)
+    make_executable(slurm_sh_file)
+
+def create_sample_slurm_sh(log, slurm_sh_file, csv_input_file, git_dir_src, output_root_dir, sample_id, omp_num_threads):
     s = ""
     s += "#!/bin/bash\n"
     s += "TASK_ID=$((${SLURM_ARRAY_TASK_ID}+${SLURM_LOCALID}))\n" # 1+[0..49] | 51+[0..49]
@@ -245,13 +319,8 @@ def create_slurm_sh(log, slurm_sh_file, csv_input_file, git_dir_src, output_root
           `hostname` and dump output to ${TASK_DIR}\"\n"
     s += "source ${PROJECT}/.local/share/venvs/covid19dynstat_jusuf/bin/activate\n"
     sample_model_py = "sample_model.py"
-    results_to_csv_py = "results_to_csv.py"
     s += "cd {}\n".format(git_dir_src)
-    s += "THEANO_FLAGS=\"base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn\" python3 {sample_model_py} {sample_id} --csvinputfile {csv_input_file} &>> ${{TASK_DIR}}/log.txt\n".format(sample_model_py=sample_model_py, sample_id=sample_id, csv_input_file=csv_input_file)
-    if export_dir:
-        s += "THEANO_FLAGS=\"base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn\" python3 {results_to_csv_py} {sample_id} --csvinputfile {csv_input_file} --outputrootdir {output_root_dir} --exportdir {export_dir} --exportoffset {export_offset} &>> ${{TASK_DIR}}/log.txt\n".format(results_to_csv_py=results_to_csv_py, sample_id=sample_id, csv_input_file=csv_input_file, output_root_dir=output_root_dir, export_dir=export_dir, export_offset=export_offset) 
-    else:
-        s += "THEANO_FLAGS=\"base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn\" python3 {results_to_csv_py} {sample_id} --csvinputfile {csv_input_file} --outputrootdir {output_root_dir} &>> ${{TASK_DIR}}/log.txt\n".format(results_to_csv_py=results_to_csv_py, sample_id=sample_id, csv_input_file=csv_input_file, output_root_dir=output_root_dir) 
+    s += "#THEANO_FLAGS=\"base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn\" OMP_NUM_THREADS={omp_num_threads} python3 {sample_model_py} {sample_id} --csvinputfile {csv_input_file} &>> ${{TASK_DIR}}/log.txt\n".format(sample_model_py=sample_model_py, sample_id=sample_id, csv_input_file=csv_input_file, omp_num_threads=omp_num_threads)
     log.trace("Create {} Input:\n{}".format(slurm_sh_file, s))
     with open(slurm_sh_file, 'w') as f:
         f.write(s)
@@ -291,7 +360,7 @@ def submit_job(log, slurm_jobfile, submit_dir, sbatch_addargs=''):
     # save SLURM job id to file
     if slurm_jobid:
         with open(os.path.join(submit_dir,
-                               slurm_jobfile + ".sbatchout"), "w") as f:
+                               slurm_jobfile + ".jobid"), "w") as f:
             f.write("jobid: {}".format(slurm_jobid))
     return slurm_jobid
 

@@ -10,7 +10,8 @@ from pathlib import Path
 
 def main(log, job_date, mail_receiver, base_dir, download_url,
          git_dir, job_dir, logging_conf, slurm_account, slurm_log_dir,
-         slurm_mail, export_dir, export_offset):
+         slurm_mail, export_dir, export_offset, use_task_id, cores, sample_tasks,
+         sample_nodes, sample_overload_factor):
     log.trace("Arguments(updated paths): \ndate: {}\nmailreceiver: {}\n"
               "basedir: {}\ngitdir: {}\njobdir: {}\nloggingconf: {}\n"
               "slurmaccount: {}\nslurmlogdir: {}\nslurmmail: {}".format(
@@ -57,42 +58,81 @@ def main(log, job_date, mail_receiver, base_dir, download_url,
                            job_dir)
     log.debug("Preprocess completed")
 
-    # Create files for Slurm Job
+    # Create files for sample Slurm Job
     slurm_dir = os.path.join(job_dir, 'slurm')
     log.trace("Create {}".format(slurm_dir))
     Path(slurm_dir).mkdir(parents=True,
                           exist_ok=True)
-    slurm_sh_file = os.path.join(slurm_dir, "sample_window.slurm.sh")
-    slurm_file = os.path.join(slurm_dir, "sample_window.slurm")
+    if use_task_id:
+        if sample_tasks % sample_nodes != 0:
+            raise Exception("sampletask % samplenodes != 0  -  Define sampletasks as a multiple of samplenodes")
+        tasks_per_node = sample_tasks/sample_nodes
+        omp_num_threads = int( cores/tasks_per_node * sample_overload_factor )
+    else:
+        # placeholder
+        tasks_per_node = 0
+        omp_num_threads = 0
 
-    utils.create_slurm_sh(log,
-                          slurm_sh_file,
-                          data_csv_fpath,
-                          git_dir_src,
-                          output_dpath,
-                          sample_id,
-                          export_dir,
-                          export_offset)
-    log.debug("Slurm_sh file created")
-    utils.create_slurm(log,
-                       slurm_file,
-                       slurm_sh_file,
-                       sample_id,
-                       slurm_account,
-                       slurm_log_dir,
-                       slurm_mail)
-    log.debug("Slurm file created")
+    sample_slurm_sh_file = os.path.join(slurm_dir, "sample_window.slurm.sh")
+    sample_slurm_file = os.path.join(slurm_dir, "sample_window.slurm")
 
-    slurm_jobid = utils.submit_job(log,
-                                   slurm_file,
-                                   slurm_dir,
-                                   '-vv')
-    log.debug("Slurm job submitted. JobId: {}".format(slurm_jobid))
+    utils.create_sample_slurm_sh(log,
+                                 sample_slurm_sh_file,
+                                 data_csv_fpath,
+                                 git_dir_src,
+                                 output_dpath,
+                                 sample_id,
+                                 omp_num_threads)
+    log.debug("Sample Slurm_sh file created")
+    utils.create_sample_slurm(log,
+                              sample_slurm_file,
+                              sample_slurm_sh_file,
+                              sample_id,
+                              slurm_account,
+                              slurm_log_dir,
+                              slurm_mail,
+                              use_task_id,
+                              tasks_per_node,
+                              sample_nodes)
+    log.debug("Sample Slurm file created")
+
+    sample_slurm_jobid = utils.submit_job(log,
+                                          sample_slurm_file,
+                                          slurm_dir,
+                                          '-vv')
+    log.debug("Sample Slurm job submitted. JobId: {}".format(sample_slurm_jobid))
 
     slurm_status = utils.status_job(log,
-                                    slurm_jobid)
-    log.debug("Slurm job status: {}".format(slurm_status))
+                                    sample_slurm_jobid)
+    log.debug("Sample Slurm job status: {}".format(slurm_status))
 
+    results_slurm_sh_file = os.path.join(slurm_dir, "results_to_csv.slurm.sh")
+    results_slurm_file = os.path.join(slurm_dir, "results_to_csv.slurm")
+
+    utils.create_results_slurm_sh(log,
+                                  results_slurm_sh_file,
+                                  data_csv_fpath,
+                                  git_dir_src,
+                                  output_dpath,
+                                  sample_id,
+                                  export_dir,
+                                  export_offset)
+    log.debug("Results Slurm_sh file created")
+    utils.create_results_slurm(log,
+                               results_slurm_file,
+                               results_slurm_sh_file,
+                               sample_id,
+                               slurm_account,
+                               slurm_log_dir,
+                               slurm_mail,
+                               sample_slurm_jobid)
+    log.debug("Results Slurm file created")
+
+    results_slurm_jobid = utils.submit_job(log,
+                                   results_slurm_file,
+                                   slurm_dir,
+                                   '-vv')
+    log.debug("Results Slurm job submitted. JobId: {}".format(results_slurm_jobid))
 
 if __name__ == "__main__":
     # Parse arguments
@@ -148,13 +188,34 @@ if __name__ == "__main__":
                         type=str,
                         nargs=1,
                         help='Get rid of any offsets when exporting')
+    parser.add_argument('--usetaskid',
+                        type=utils.str2bool,
+                        nargs='?',
+                        const=True,
+                        help='Run sample_ia with multiple tasks')
+    parser.add_argument('--cores',
+                        type=int,
+                        nargs=1,
+                        help='Number of cores on the hpc system')
+    parser.add_argument('--sampletasks',
+                        type=int,
+                        nargs=1,
+                        help='Number of sample tasks')
+    parser.add_argument('--samplenodes',
+                        type=int,
+                        nargs=1,
+                        help='Number of nodes for the sample job')
+    parser.add_argument('--sampleoverloadfactor',
+                        type=int,
+                        nargs=1,
+                        help='Overload factor to calucalte omp num threads')
     args = parser.parse_args()
 
     # ensure that everything is accessable by all project members
     new_umask = 0o002
     old_umask = os.umask(new_umask)
     # parse arguments
-    job_date, mail_receiver, base_dir, download_url, git_dir, job_dir, logging_conf, slurm_account, slurm_log_dir, slurm_mail, export_dir, export_offset = utils.parse_arguments(args)
+    job_date, mail_receiver, base_dir, download_url, git_dir, job_dir, logging_conf, slurm_account, slurm_log_dir, slurm_mail, export_dir, export_offset, use_task_id, cores, sample_tasks, sample_nodes, sample_overload_factor = utils.parse_arguments(args)
     # Setup Logger
     Path(job_dir).mkdir(parents=True,
                         exist_ok=True)
@@ -174,7 +235,12 @@ if __name__ == "__main__":
              slurm_log_dir,
              slurm_mail,
              export_dir,
-             export_offset)
+             export_offset,
+             use_task_id,
+             cores,
+             sample_tasks,
+             sample_nodes,
+             sample_overload_factor)
         os.umask(old_umask)
     except Exception:
         log.exception("Covid19 Dynstat full_routine failed. Bugfix required")
