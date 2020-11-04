@@ -18,10 +18,10 @@ EXPORTOFFSET="25"
 # If there's an argument we want to run a Job for old days. If there's no argument we will use yesterday in the python script full_routine.
 if [[ -n ${1} ]]; then
     echo "$(date) start full_routine with ${1//_/-}"
-    /p/project/covid19dynstat/.local/share/venvs/covid19dynstat_jusuf/bin/python3 ${BASEDIR}/python_code/full_routine.py -m ${MAIL} --basedir ${BASEDIR} --gitdir ${GITDIR} --downloadurl ${DOWNLOADURL} --jobdir ${JOBDIR} --slurmaccount ${SLURMACCOUNT} --slurmmail ${SLURMMAIL} --exportdir ${EXPORTDIR} --exportoffset ${EXPORTOFFSET} -d ${1//_/-}
+    /p/project/covid19dynstat/.local/share/venvs/covid19dynstat_jusuf/bin/python3 ${BASEDIR}/python_code/full_routine.py -m ${MAIL} --basedir ${BASEDIR} --gitdir ${GITDIR} --downloadurl ${DOWNLOADURL} --jobdir ${JOBDIR} --slurmaccount ${SLURMACCOUNT} --slurmmail ${SLURMMAIL} -d ${1//_/-}
 else
     echo "$(date) start full_routine without date argument"
-    /p/project/covid19dynstat/.local/share/venvs/covid19dynstat_jusuf/bin/python3 ${BASEDIR}/python_code/full_routine.py -m ${MAIL} --basedir ${BASEDIR} --gitdir ${GITDIR} --downloadurl ${DOWNLOADURL} --jobdir ${JOBDIR} --slurmaccount ${SLURMACCOUNT} --slurmmail ${SLURMMAIL} --exportdir ${EXPORTDIR} --exportoffset ${EXPORTOFFSET} 
+    /p/project/covid19dynstat/.local/share/venvs/covid19dynstat_jusuf/bin/python3 ${BASEDIR}/python_code/full_routine.py -m ${MAIL} --basedir ${BASEDIR} --gitdir ${GITDIR} --downloadurl ${DOWNLOADURL} --jobdir ${JOBDIR} --slurmaccount ${SLURMACCOUNT} --slurmmail ${SLURMMAIL} 
 fi
 
 
