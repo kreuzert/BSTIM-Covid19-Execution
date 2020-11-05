@@ -291,8 +291,8 @@ def submit_job(log, slurm_jobfile, submit_dir, sbatch_addargs=''):
     # save SLURM job id to file
     if slurm_jobid:
         with open(os.path.join(submit_dir,
-                               slurm_jobfile + ".sbatchout"), "w") as f:
-            f.write("jobid: {}".format(slurm_jobid))
+                               slurm_jobfile + ".jobid"), "w") as f:
+            f.write("{}".format(slurm_jobid))
     return slurm_jobid
 
 
