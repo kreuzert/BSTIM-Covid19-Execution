@@ -92,6 +92,7 @@ def main(log, job_date, mail_receiver, base_dir, download_url,
                               slurm_log_dir,
                               slurm_mail,
                               use_task_id,
+                              sample_tasks,
                               tasks_per_node,
                               sample_nodes)
     log.debug("Sample Slurm file created")

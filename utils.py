@@ -230,14 +230,14 @@ def preprocess_table(log, raw_csv_fpath, data_csv_fpath, git_dir_data, job_dir):
     df.to_csv(data_csv_fpath, sep=",")
 
 
-def create_sample_slurm(log, slurm_file, slurm_sh_file, sample_id, account, slurm_log_dir, slurm_mail, use_task_id=False, tasks_per_node=50, nodes=2):
+def create_sample_slurm(log, slurm_file, slurm_sh_file, sample_id, account, slurm_log_dir, slurm_mail, use_task_id=False, sample_tasks=100, tasks_per_node=50, nodes=2):
     s = ""
     s += "#!/bin/bash -x\n"
     s += "#SBATCH --job-name={}_SM_COVID\n".format(sample_id)
     s += "#SBATCH --account={}\n".format(account)
     s += "#SBATCH --partition=batch\n"
     if use_task_id:
-        s += "#SBATCH --array=1-100:{tasks_per_node}\n".format(tasks_per_node=int(tasks_per_node))
+        s += "#SBATCH --array=1-{sample_tasks}:{tasks_per_node}\n".format(sample_tasks=sample_tasks, tasks_per_node=int(tasks_per_node))
         s += "#SBATCH --ntasks-per-node={tasks_per_node}\n".format(tasks_per_node=int(tasks_per_node))
         s += "#SBATCH --nodes={nodes}\n".format(nodes=int(nodes))
     else:
