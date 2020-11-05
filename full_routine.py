@@ -50,6 +50,7 @@ def main(log, job_date, mail_receiver, base_dir, download_url,
                        download_url,
                        raw_csv_fpath)
     log.debug("Download completed")
+    log.debug("Start Preprocess (may take a while)")
     utils.preprocess_table(log,
                            raw_csv_fpath,
                            data_csv_fpath,
