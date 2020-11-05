@@ -70,6 +70,7 @@ def main(
     # download csv data
     utils.download_csv(log, download_url, raw_csv_fpath)
     log.debug("Download completed")
+    log.debug("Start Preprocessing")
     utils.preprocess_table(log, raw_csv_fpath, data_csv_fpath, git_dir_data, job_dir)
     log.debug("Preprocess completed")
 
