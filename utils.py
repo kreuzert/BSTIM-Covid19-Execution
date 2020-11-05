@@ -374,7 +374,7 @@ def create_results_slurm_sh(
     results_to_csv_py = "results_to_csv.py"
     s += "cd {}\n".format(git_dir_src)
     if export_dir:
-        s += '#THEANO_FLAGS="base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn" python3 {results_to_csv_py} {sample_id} --csvinputfile {csv_input_file} --outputrootdir {output_root_dir} --exportdir {export_dir} --exportoffset {export_offset} &>> ${{TASK_DIR}}/log.txt\n'.format(
+        s += 'THEANO_FLAGS="base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn" python3 {results_to_csv_py} {sample_id} --csvinputfile {csv_input_file} --outputrootdir {output_root_dir} --exportdir {export_dir} --exportoffset {export_offset} &>> ${{TASK_DIR}}/log.txt\n'.format(
             results_to_csv_py=results_to_csv_py,
             sample_id=sample_id,
             csv_input_file=csv_input_file,
@@ -383,7 +383,7 @@ def create_results_slurm_sh(
             export_offset=export_offset,
         )
     else:
-        s += '#THEANO_FLAGS="base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn" python3 {results_to_csv_py} {sample_id} --csvinputfile {csv_input_file} --outputrootdir {output_root_dir} &>> ${{TASK_DIR}}/log.txt\n'.format(
+        s += 'THEANO_FLAGS="base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn" python3 {results_to_csv_py} {sample_id} --csvinputfile {csv_input_file} --outputrootdir {output_root_dir} &>> ${{TASK_DIR}}/log.txt\n'.format(
             results_to_csv_py=results_to_csv_py,
             sample_id=sample_id,
             csv_input_file=csv_input_file,
@@ -414,7 +414,7 @@ def create_sample_slurm_sh(
     s += "source ${PROJECT}/.local/share/venvs/covid19dynstat_jusuf/bin/activate\n"
     sample_model_py = "sample_model.py"
     s += "cd {}\n".format(git_dir_src)
-    s += '#THEANO_FLAGS="base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn" OMP_NUM_THREADS={omp_num_threads} python3 {sample_model_py} --task_id ${{TASK_ID}} {sample_id} --csvinputfile {csv_input_file} &>> ${{TASK_DIR}}/log.txt\n'.format(
+    s += 'THEANO_FLAGS="base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn" OMP_NUM_THREADS={omp_num_threads} python3 {sample_model_py} --task_id ${{TASK_ID}} {sample_id} --csvinputfile {csv_input_file} &>> ${{TASK_DIR}}/log.txt\n'.format(
         sample_model_py=sample_model_py,
         sample_id=sample_id,
         csv_input_file=csv_input_file,
