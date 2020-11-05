@@ -320,7 +320,7 @@ def create_sample_slurm_sh(log, slurm_sh_file, csv_input_file, git_dir_src, outp
     s += "source ${PROJECT}/.local/share/venvs/covid19dynstat_jusuf/bin/activate\n"
     sample_model_py = "sample_model.py"
     s += "cd {}\n".format(git_dir_src)
-    s += "#THEANO_FLAGS=\"base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn\" OMP_NUM_THREADS={omp_num_threads} python3 {sample_model_py} {sample_id} --csvinputfile {csv_input_file} &>> ${{TASK_DIR}}/log.txt\n".format(sample_model_py=sample_model_py, sample_id=sample_id, csv_input_file=csv_input_file, omp_num_threads=omp_num_threads)
+    s += "#THEANO_FLAGS=\"base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn\" OMP_NUM_THREADS={omp_num_threads} python3 {sample_model_py} --task_id ${{TASK_ID}} {sample_id} --csvinputfile {csv_input_file} &>> ${{TASK_DIR}}/log.txt\n".format(sample_model_py=sample_model_py, sample_id=sample_id, csv_input_file=csv_input_file, omp_num_threads=omp_num_threads)
     log.trace("Create {} Input:\n{}".format(slurm_sh_file, s))
     with open(slurm_sh_file, 'w') as f:
         f.write(s)
@@ -361,7 +361,7 @@ def submit_job(log, slurm_jobfile, submit_dir, sbatch_addargs=''):
     if slurm_jobid:
         with open(os.path.join(submit_dir,
                                slurm_jobfile + ".jobid"), "w") as f:
-            f.write("jobid: {}".format(slurm_jobid))
+            f.write("{}".format(slurm_jobid))
     return slurm_jobid
 
 
