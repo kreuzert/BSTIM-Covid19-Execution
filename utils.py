@@ -162,20 +162,20 @@ def parse_arguments(args):
     else:
         cores = 128
 
-    if args.sampletasks is not None:
-        sample_tasks = args.sampletasks[0]
+    if args.sampleiatasks is not None:
+        sampleia_tasks = args.sampleiatasks[0]
     else:
-        sample_tasks = 100
+        sampleia_tasks = 100
 
-    if args.samplenodes is not None:
-        sample_nodes = args.samplenodes[0]
+    if args.sampleianodes is not None:
+        sampleia_nodes = args.sampleianodes[0]
     else:
-        sample_nodes = 2
+        sampleia_nodes = 2
 
-    if args.sampleoverloadfactor is not None:
-        sample_overload_factor = args.sampleoverloadfactor[0]
+    if args.sampleiaoverloadfactor is not None:
+        sampleia_overload_factor = args.sampleiaoverloadfactor[0]
     else:
-        sample_overload_factor = 4
+        sampleia_overload_factor = 4
 
     return (
         job_date,
@@ -192,9 +192,9 @@ def parse_arguments(args):
         export_offset,
         use_task_id,
         cores,
-        sample_tasks,
-        sample_nodes,
-        sample_overload_factor,
+        sampleia_tasks,
+        sampleia_nodes,
+        sampleia_overload_factor,
     )
 
 
@@ -268,7 +268,7 @@ def preprocess_table(log, raw_csv_fpath, data_csv_fpath, git_dir_data, job_dir):
     df.to_csv(data_csv_fpath, sep=",")
 
 
-def create_sample_slurm(
+def create_sampleia_slurm(
     log,
     slurm_file,
     slurm_sh_file,
@@ -277,27 +277,25 @@ def create_sample_slurm(
     slurm_log_dir,
     slurm_mail,
     use_task_id=False,
-    sample_tasks=100,
+    sampleia_tasks=100,
     tasks_per_node=50,
-    nodes=2,
 ):
     s = ""
     s += "#!/bin/bash -x\n"
-    s += "#SBATCH --job-name={}_SM_COVID\n".format(sample_id)
+    s += "#SBATCH --job-name={}_SIA_COVID\n".format(sample_id)
     s += "#SBATCH --account={}\n".format(account)
     s += "#SBATCH --partition=batch\n"
     if use_task_id:
-        s += "#SBATCH --array=1-{sample_tasks}:{tasks_per_node}\n".format(
-            sample_tasks=sample_tasks, tasks_per_node=int(tasks_per_node)
+        s += "#SBATCH --array=1-{sampleia_tasks}:{tasks_per_node}\n".format(
+            sampleia_tasks=sampleia_tasks, tasks_per_node=int(tasks_per_node)
         )
         s += "#SBATCH --ntasks-per-node={tasks_per_node}\n".format(
             tasks_per_node=int(tasks_per_node)
         )
-        s += "#SBATCH --nodes={nodes}\n".format(nodes=int(nodes))
     else:
         s += "#SBATCH --array=1\n"
         s += "#SBATCH --ntasks-per-node=1\n"
-        s += "#SBATCH --nodes=1\n"
+    s += "#SBATCH --nodes=1\n"
     s += "#SBATCH --output={}/%A_o.txt\n".format(slurm_log_dir)
     s += "#SBATCH --error={}/%A_e.txt\n".format(slurm_log_dir)
     s += "#SBATCH --time=3:00:00\n"
@@ -321,11 +319,11 @@ def create_results_slurm(
     account,
     slurm_log_dir,
     slurm_mail,
-    sample_slurm_job_id,
+    sampleia_slurm_job_id,
 ):
     s = ""
     s += "#!/bin/bash -x\n"
-    s += "#SBATCH --job-name={}_R_COVID\n".format(sample_id)
+    s += "#SBATCH --job-name={}_SMR_COVID\n".format(sample_id)
     s += "#SBATCH --account={}\n".format(account)
     s += "#SBATCH --partition=batch\n"
     s += "#SBATCH --array=1\n"
@@ -333,8 +331,8 @@ def create_results_slurm(
     s += "#SBATCH --nodes=1\n"
     s += "#SBATCH --output={}/%A_o.txt\n".format(slurm_log_dir)
     s += "#SBATCH --error={}/%A_e.txt\n".format(slurm_log_dir)
-    s += "#SBATCH --dependency=afterok:{}\n".format(sample_slurm_job_id)
-    s += "#SBATCH --time=3:00:00\n"
+    s += "#SBATCH --dependency=afterok:{}\n".format(sampleia_slurm_job_id)
+    s += "#SBATCH --time=6:00:00\n"
     s += "# #SBATCH --mail-type=FAIL\n"
     s += "# #SBATCH --mail-user={}\n".format(slurm_mail)
     s += "# select project\n"
@@ -360,6 +358,7 @@ def create_results_slurm_sh(
     git_dir_src,
     output_root_dir,
     sample_id,
+    ia_effect_root,
     export_dir,
     export_offset,
 ):
@@ -372,7 +371,14 @@ def create_results_slurm_sh(
           `hostname` and dump output to ${TASK_DIR}"\n'
     s += "source ${PROJECT}/.local/share/venvs/covid19dynstat_jusuf/bin/activate\n"
     results_to_csv_py = "results_to_csv.py"
+    sample_model_py = "sample_model.py"
     s += "cd {}\n".format(git_dir_src)
+    s += 'THEANO_FLAGS="base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn" python3 {sample_model_py} {sample_id} --ia_effect_root {ia_effect_root} --csvinputfile {csv_input_file} &>> ${{TASK_DIR}}/log.txt\n'.format(
+        sample_model_py=sample_model_py,
+        sample_id=sample_id,
+        ia_effect_root=ia_effect_root,
+        csv_input_file=csv_input_file,
+    )
     if export_dir:
         s += 'THEANO_FLAGS="base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn" python3 {results_to_csv_py} {sample_id} --csvinputfile {csv_input_file} --outputrootdir {output_root_dir} --exportdir {export_dir} --exportoffset {export_offset} &>> ${{TASK_DIR}}/log.txt\n'.format(
             results_to_csv_py=results_to_csv_py,
@@ -395,13 +401,14 @@ def create_results_slurm_sh(
     make_executable(slurm_sh_file)
 
 
-def create_sample_slurm_sh(
+def create_sampleia_slurm_sh(
     log,
     slurm_sh_file,
     csv_input_file,
     git_dir_src,
     output_root_dir,
     sample_id,
+    ia_effect_root,
     omp_num_threads,
 ):
     s = ""
@@ -412,11 +419,12 @@ def create_sample_slurm_sh(
     s += 'echo "TASK ${TASK_ID}: Running in job-array ${SLURM_ARRAY_JOB_ID} on \
           `hostname` and dump output to ${TASK_DIR}"\n'
     s += "source ${PROJECT}/.local/share/venvs/covid19dynstat_jusuf/bin/activate\n"
-    sample_model_py = "sample_model.py"
+    sample_ia_effects_py = "sample_ia_effects.py"
     s += "cd {}\n".format(git_dir_src)
-    s += 'THEANO_FLAGS="base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn" OMP_NUM_THREADS={omp_num_threads} python3 {sample_model_py} --task_id ${{TASK_ID}} {sample_id} --csvinputfile {csv_input_file} &>> ${{TASK_DIR}}/log.txt\n'.format(
-        sample_model_py=sample_model_py,
+    s += 'THEANO_FLAGS="base_compiledir=${{TASK_DIR}}/,floatX=float32,device=cpu,openmp=True,mode=FAST_RUN,warn_float64=warn" OMP_NUM_THREADS={omp_num_threads} python3 {sample_ia_effects_py} --task_id ${{TASK_ID}} {sample_id} --ia_effect_root {ia_effect_root} --csvinputfile {csv_input_file} &>> ${{TASK_DIR}}/log.txt\n'.format(
+        sample_ia_effects_py=sample_ia_effects_py,
         sample_id=sample_id,
+        ia_effect_root=ia_effect_root,
         csv_input_file=csv_input_file,
         omp_num_threads=omp_num_threads,
     )
