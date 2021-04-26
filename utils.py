@@ -305,7 +305,7 @@ def create_sampleia_slurm(
     s += "jutil env activate -p {}\n".format(account)
     s += "# ensure SLURM output/errors directory exists\n"
     s += "# run tasks\n"
-    s += "srun --exclusive -n ${{SLURM_NTASKS}} {}\n".format(slurm_sh_file)
+    s += "srun --cpu-bind=none --exclusive -n ${{SLURM_NTASKS}} {}\n".format(slurm_sh_file)
     log.trace("Create {} Input:\n{}".format(slurm_file, s))
     with open(slurm_file, "w") as f:
         f.write(s)
@@ -326,20 +326,19 @@ def create_results_slurm(
     s += "#SBATCH --job-name={}_SMR_COVID\n".format(sample_id)
     s += "#SBATCH --account={}\n".format(account)
     s += "#SBATCH --partition=batch\n"
-    s += "#SBATCH --array=1\n"
     s += "#SBATCH --ntasks-per-node=1\n"
     s += "#SBATCH --nodes=1\n"
-    s += "#SBATCH --output={}/%A_o.txt\n".format(slurm_log_dir)
-    s += "#SBATCH --error={}/%A_e.txt\n".format(slurm_log_dir)
+    s += "#SBATCH --output={}/%j_o.txt\n".format(slurm_log_dir)
+    s += "#SBATCH --error={}/%j_e.txt\n".format(slurm_log_dir)
     s += "#SBATCH --dependency=afterok:{}\n".format(sampleia_slurm_job_id)
-    s += "#SBATCH --time=6:00:00\n"
+    s += "#SBATCH --time=3:00:00\n"
     s += "# #SBATCH --mail-type=FAIL\n"
     s += "# #SBATCH --mail-user={}\n".format(slurm_mail)
     s += "# select project\n"
     s += "jutil env activate -p {}\n".format(account)
     s += "# ensure SLURM output/errors directory exists\n"
     s += "# run tasks\n"
-    s += "srun --exclusive -n ${{SLURM_NTASKS}} {}\n".format(slurm_sh_file)
+    s += "srun --cpu-bind=none --exclusive -n ${{SLURM_NTASKS}} {}\n".format(slurm_sh_file)
     log.trace("Create {} Input:\n{}".format(slurm_file, s))
     with open(slurm_file, "w") as f:
         f.write(s)
@@ -364,10 +363,10 @@ def create_results_slurm_sh(
 ):
     s = ""
     s += "#!/bin/bash\n"
-    s += "TASK_ID=$((${SLURM_ARRAY_TASK_ID}+${SLURM_LOCALID}))\n"  # 1+[0..49] | 51+[0..49]
-    s += "TASK_DIR=${SCRATCH}/run_${SLURM_ARRAY_JOB_ID}/task_${TASK_ID}\n"
+    s += "TASK_ID=$(${SLURM_LOCALID})\n"  # 1+[0..49] | 51+[0..49]
+    s += "TASK_DIR=${SCRATCH}/run_${TASK_ID}/task_${TASK_ID}\n"
     s += "mkdir -p ${TASK_DIR}\n"
-    s += 'echo "TASK ${TASK_ID}: Running in job-array ${SLURM_ARRAY_JOB_ID} on \
+    s += 'echo "TASK ${TASK_ID}: Running on \
           `hostname` and dump output to ${TASK_DIR}"\n'
     s += "source ${PROJECT}/.local/share/venvs/covid19dynstat_jusuf/bin/activate\n"
     results_to_csv_py = "results_to_csv.py"
